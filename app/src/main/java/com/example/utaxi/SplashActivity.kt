@@ -81,11 +81,9 @@ class SplashActivity : AppCompatActivity() {
             val user = myFirebaseAuth.currentUser
             if (user != null) {
 
-                Toast.makeText(this.applicationContext, " adsdnsldb", Toast.LENGTH_SHORT).show()
-
-                val intent = Intent(this,TestActivity::class.java)
+                val intent = Intent(this,DriverHomeActivity::class.java)
                 startActivity(intent)
-                // checkUserFromFirebase()
+                    finish()
             } else {
                 showLoginLayout()
             }
