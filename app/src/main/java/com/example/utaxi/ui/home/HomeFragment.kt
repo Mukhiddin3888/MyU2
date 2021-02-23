@@ -35,16 +35,19 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     private lateinit var homeViewModel: HomeViewModel
     private lateinit var mMap: GoogleMap
 
+    lateinit var userLatLng: LatLng
+    lateinit var newPos:LatLng
 
     //online sysytem
-    private lateinit var onlineRef : DatabaseReference
-    private lateinit var currentUserRef: DatabaseReference
     private lateinit var driversLocationRef: DatabaseReference
-    private lateinit var geoFire:GeoFire
+    private lateinit var geoFire: GeoFire
+
+
+    lateinit var fusedLocationProviderClient: FusedLocationProviderClient
 
 
     override fun onDestroy() {
-        geoFire.removeLocation("firebase-hq");
+        geoFire.removeLocation(FirebaseAuth.getInstance().currentUser!!.uid)
         super.onDestroy()
     }
 
@@ -55,85 +58,90 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     }
 
 
-
-
     private val REQUEST_LOCATION_PERMISSION = 1
 
 
     override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
+            inflater: LayoutInflater,
+            container: ViewGroup?,
+            savedInstanceState: Bundle?
     ): View? {
         homeViewModel =
                 ViewModelProvider(this).get(HomeViewModel::class.java)
         val root = inflater.inflate(R.layout.fragment_home, container, false)
 
         val mapFragment = childFragmentManager
-            .findFragmentById(R.id.map) as SupportMapFragment
+                .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
 
 
-        init()
-
         return root
-    }
-
-    private fun init() {
-
-
-        onlineRef = FirebaseDatabase.getInstance().getReference().child(".info/connected")
-
-        driversLocationRef = FirebaseDatabase.getInstance().getReference(Common.DRIVERS_LOCATION_REFERENCE)
-
-        geoFire = GeoFire(driversLocationRef)
-
     }
 
 
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
+        driversLocationRef = FirebaseDatabase.getInstance().getReference(Common.DRIVERS_LOCATION_REFERENCE)
+
+        mMap.uiSettings.isZoomControlsEnabled = true
+
+        geoFire = GeoFire(driversLocationRef)
 
         //Request permission
 
         val latitude = 41.338974833027486
         val longtitude = 69.33511885918323
 
+
         val homeLatLng = LatLng(latitude, longtitude)
-        val zoomLevel = 15f
-
+        val zoomLevel = 18f
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(homeLatLng, zoomLevel))
-        mMap.addMarker(MarkerOptions().position(homeLatLng))
-
 
         enableMyLocation()
         setMapLongClick(mMap)
         setPoiClick(mMap)
 
-        geoFire.setLocation(
-            "firebase-hq",
-            GeoLocation(37.7853889, -122.4056973),
-            object : GeoFire.CompletionListener {
-                fun onComplete(key: String?, error: FirebaseError?) {
-                    if (error != null) {
-                        System.err.println("There was an error saving the location to GeoFire: $error")
-                    } else {
-                        println("Location saved on server successfully!")
+        mMap.setOnMyLocationClickListener {
+            if (ActivityCompat.checkSelfPermission(this.requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                    && ActivityCompat.checkSelfPermission(this.requireContext(),
+                            Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+
+            }
+            fusedLocationProviderClient.lastLocation
+                    .addOnSuccessListener { location ->
+                        userLatLng = LatLng(location.latitude, location.longitude)
+                        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, zoomLevel))
+                        mMap.addMarker(MarkerOptions().position(userLatLng))
+
                     }
-                }
 
-                override fun onComplete(key: String?, error: DatabaseError?) {
+        }
+
+        geoFire.setLocation(
+                FirebaseAuth.getInstance().currentUser!!.uid,
+                GeoLocation(latitude,longtitude),
+                object : GeoFire.CompletionListener {
+                    fun onComplete(key: String?, error: FirebaseError?) {
+                        if (error != null) {
+                            System.err.println("There was an error saving the location to GeoFire: $error")
+                        } else {
+                            println("Location saved on server successfully!")
+                        }
+                    }
+
+                    override fun onComplete(key: String?, error: DatabaseError?) {
 
 
-                }
-            })
+                    }
+
+                })
 
     }
 
     private fun isPermissionGranted(): Boolean {
         return ContextCompat.checkSelfPermission(
-            this.requireContext(),
-            Manifest.permission.ACCESS_FINE_LOCATION
+                this.requireContext(),
+                Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
     }
@@ -141,15 +149,15 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     private fun enableMyLocation() {
         if (isPermissionGranted()) {
             if (ActivityCompat.checkSelfPermission(
-                    this.requireContext(),
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                )
-                != PackageManager.PERMISSION_GRANTED && ActivityCompat
-                    .checkSelfPermission(
-                        this.requireContext(),
-                        Manifest.permission.ACCESS_COARSE_LOCATION
+                            this.requireContext(),
+                            Manifest.permission.ACCESS_FINE_LOCATION
                     )
-                != PackageManager.PERMISSION_GRANTED) {
+                    != PackageManager.PERMISSION_GRANTED && ActivityCompat
+                            .checkSelfPermission(
+                                    this.requireContext(),
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                    != PackageManager.PERMISSION_GRANTED) {
 
                 return
             }
@@ -157,16 +165,17 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
 
         } else {
             ActivityCompat.requestPermissions(
-                this.requireActivity(),
-                arrayOf<String>(Manifest.permission.ACCESS_FINE_LOCATION),
-                REQUEST_LOCATION_PERMISSION
+                    this.requireActivity(),
+                    arrayOf<String>(Manifest.permission.ACCESS_FINE_LOCATION),
+                    REQUEST_LOCATION_PERMISSION
             )
         }
     }
+
     override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
+            requestCode: Int,
+            permissions: Array<String>,
+            grantResults: IntArray
     ) {
         if (requestCode == REQUEST_LOCATION_PERMISSION) {
             if (grantResults.contains(PackageManager.PERMISSION_GRANTED)) {
@@ -175,35 +184,34 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
-    private fun setMapLongClick(map: GoogleMap){
+    private fun setMapLongClick(map: GoogleMap) {
 
         map.setOnMapLongClickListener {
 
             val snippet = String.format(
-                Locale.getDefault(),
-                "Lat: %1\$.5f, Long: %2\$.5f",
-                it.latitude,
-                it.longitude
+                    Locale.getDefault(),
+                    "Lat: %1\$.5f, Long: %2\$.5f",
+                    it.latitude,
+                    it.longitude
 
             )
 
             map.addMarker(
-                MarkerOptions().position(it).title(getString(R.string.app_name)).snippet(snippet)
+                    MarkerOptions().position(it).title(getString(R.string.app_name)).snippet(snippet)
             )
         }
     }
+
     private fun setPoiClick(map: GoogleMap) {
         map.setOnPoiClickListener { poi ->
             val poiMarker = map.addMarker(
-                MarkerOptions()
-                    .position(poi.latLng)
-                    .title(poi.name)
+                    MarkerOptions()
+                            .position(poi.latLng)
+                            .title(poi.name)
             )
             poiMarker.showInfoWindow()
         }
     }
-
-
 
 
 }
