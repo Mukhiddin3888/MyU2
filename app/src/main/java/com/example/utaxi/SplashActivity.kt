@@ -35,6 +35,9 @@ class SplashActivity : AppCompatActivity() {
     private lateinit var firebaseAuth: FirebaseAuth
     private lateinit var listener: FirebaseAuth.AuthStateListener
 
+    lateinit var database:FirebaseDatabase
+    lateinit var driverInfoReference: DatabaseReference
+
 
     override fun onStart() {
         super.onStart()
@@ -70,6 +73,8 @@ class SplashActivity : AppCompatActivity() {
 
     private fun init() {
 
+        database = FirebaseDatabase.getInstance()
+        driverInfoReference = database.getReference("DriverInfo")
 
         providers = Arrays.asList(
                 AuthUI.IdpConfig.PhoneBuilder().build(),
@@ -81,13 +86,40 @@ class SplashActivity : AppCompatActivity() {
             val user = myFirebaseAuth.currentUser
             if (user != null) {
 
-                val intent = Intent(this,DriverHomeActivity::class.java)
-                startActivity(intent)
-                    finish()
+                checkUserFromFirebase()
+
             } else {
                 showLoginLayout()
             }
         }
+    }
+
+    private fun checkUserFromFirebase() {
+
+    driverInfoReference.child(FirebaseAuth.getInstance().currentUser!!.uid)
+            .addListenerForSingleValueEvent(object : ValueEventListener{
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    if (snapshot.exists()){
+                        Toast.makeText(this@SplashActivity,"User Allready exist",Toast.LENGTH_SHORT).show()
+                        val intent = Intent(this@SplashActivity,DriverHomeActivity::class.java)
+                        startActivity(intent)
+                        finish()
+
+                    }
+                    else{
+                        val intent = Intent(this@SplashActivity,RegisterActivity::class.java)
+                        startActivity(intent)
+                        finish()
+                    }
+
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Toast.makeText(this@SplashActivity,error.message,Toast.LENGTH_SHORT).show()
+                }
+
+            })
+
     }
 
     private fun showLoginLayout() {
@@ -95,8 +127,6 @@ class SplashActivity : AppCompatActivity() {
                 .setPhoneButtonId(R.id.btn_login_phone)
                 .setGoogleButtonId(R.id.btn_login_google)
                 .build()
-
-
 
         startActivityForResult(
                 AuthUI.getInstance()

@@ -3,21 +3,32 @@ package com.example.utaxi.ui.home
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
+import com.example.utaxi.Common
 import com.example.utaxi.R
+import com.firebase.geofire.GeoFire
+import com.firebase.geofire.GeoLocation
+import com.google.android.gms.location.*
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.material.snackbar.Snackbar
+import com.google.firebase.FirebaseError
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.*
 import java.util.*
+
 
 class HomeFragment : Fragment(), OnMapReadyCallback {
 
@@ -25,13 +36,34 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     private lateinit var mMap: GoogleMap
 
 
+    //online sysytem
+    private lateinit var onlineRef : DatabaseReference
+    private lateinit var currentUserRef: DatabaseReference
+    private lateinit var driversLocationRef: DatabaseReference
+    private lateinit var geoFire:GeoFire
+
+
+    override fun onDestroy() {
+        geoFire.removeLocation("firebase-hq");
+        super.onDestroy()
+    }
+
+
+    override fun onResume() {
+        super.onResume()
+
+    }
+
+
+
+
     private val REQUEST_LOCATION_PERMISSION = 1
 
 
     override fun onCreateView(
-            inflater: LayoutInflater,
-            container: ViewGroup?,
-            savedInstanceState: Bundle?
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
     ): View? {
         homeViewModel =
                 ViewModelProvider(this).get(HomeViewModel::class.java)
@@ -42,12 +74,27 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         mapFragment.getMapAsync(this)
 
 
+        init()
+
         return root
     }
+
+    private fun init() {
+
+
+        onlineRef = FirebaseDatabase.getInstance().getReference().child(".info/connected")
+
+        driversLocationRef = FirebaseDatabase.getInstance().getReference(Common.DRIVERS_LOCATION_REFERENCE)
+
+        geoFire = GeoFire(driversLocationRef)
+
+    }
+
 
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
 
+        //Request permission
 
         val latitude = 41.338974833027486
         val longtitude = 69.33511885918323
@@ -62,24 +109,52 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         enableMyLocation()
         setMapLongClick(mMap)
         setPoiClick(mMap)
+
+        geoFire.setLocation(
+            "firebase-hq",
+            GeoLocation(37.7853889, -122.4056973),
+            object : GeoFire.CompletionListener {
+                fun onComplete(key: String?, error: FirebaseError?) {
+                    if (error != null) {
+                        System.err.println("There was an error saving the location to GeoFire: $error")
+                    } else {
+                        println("Location saved on server successfully!")
+                    }
+                }
+
+                override fun onComplete(key: String?, error: DatabaseError?) {
+
+
+                }
+            })
+
     }
 
     private fun isPermissionGranted(): Boolean {
         return ContextCompat.checkSelfPermission(
             this.requireContext(),
-            Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
     }
 
     private fun enableMyLocation() {
         if (isPermissionGranted()) {
-            if (ActivityCompat.checkSelfPermission(this.requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+            if (ActivityCompat.checkSelfPermission(
+                    this.requireContext(),
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
                 != PackageManager.PERMISSION_GRANTED && ActivityCompat
-                    .checkSelfPermission(this.requireContext(), Manifest.permission.ACCESS_COARSE_LOCATION)
+                    .checkSelfPermission(
+                        this.requireContext(),
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
                 != PackageManager.PERMISSION_GRANTED) {
 
                 return
             }
             mMap.isMyLocationEnabled = true
+
         } else {
             ActivityCompat.requestPermissions(
                 this.requireActivity(),
@@ -91,7 +166,8 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<String>,
-        grantResults: IntArray) {
+        grantResults: IntArray
+    ) {
         if (requestCode == REQUEST_LOCATION_PERMISSION) {
             if (grantResults.contains(PackageManager.PERMISSION_GRANTED)) {
                 enableMyLocation()
@@ -126,4 +202,8 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
             poiMarker.showInfoWindow()
         }
     }
+
+
+
+
 }
